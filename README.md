@@ -5,3 +5,6 @@ This repository provides a modular and extensible framework for **extracting, cl
 - **Informative Path Planning (IPP)** and adaptive environmental monitoring  
 - **Gaussian Process (GP)** modeling of sparse, uncertain fields  
 - Exporting atmospheric datasets for external users as Excel/CSV files
+
+
+![Example Image](projected_land_and_data.png)
