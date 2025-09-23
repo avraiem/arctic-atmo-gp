@@ -142,6 +142,7 @@ class CoordinateTransformer:
         Parameters:
             resolution (str): One of '110m', '50m', '10m'
             extent (tuple): Optional bounding box (min_lat, max_lat, min_lon, max_lon)
+            wrap_longitudes (bool): Whether to convert longitudes >180 to [-180, 180]
         
         Returns:
             List of (x_coords, y_coords) tuples for plotting.
@@ -183,6 +184,73 @@ class CoordinateTransformer:
                     x, y = self.latlon_to_xy(lon, lat)
                     transformed_polys.append((x, y))
 
+        return transformed_polys
+    
+
+    def get_transformed_feature_polygons(self, extent=None, resolution="10m", wrap_longitudes=True, include_minor_islands=True):
+        """
+        Returns a list of transformed land polygons in (x, y) space.
+
+        Parameters:
+            extent (tuple): (min_lat, max_lat, min_lon, max_lon) in degrees
+            resolution (str): '10m', '50m', or '110m'
+            wrap_longitudes (bool): Whether to convert longitudes >180 to [-180, 180]
+            include_minor_islands (bool): Whether to also include minor islands
+
+        Returns:
+            List of (x_coords, y_coords) tuples for plotting.
+        """
+
+        # Prepare extent and clip box
+        clip_box = None
+        if extent is not None:
+            if wrap_longitudes:
+                extent = (
+                    extent[0], extent[1],
+                    self.wrap_lon_to_180(extent[2]), self.wrap_lon_to_180(extent[3])
+                )
+            clip_box = box(extent[2], extent[0], extent[3], extent[1])
+
+        transformed_polys = []
+
+        # List of features to extract
+        features_to_process = [
+            NaturalEarthFeature('physical', 'land', scale=resolution)
+        ]
+        if include_minor_islands:
+            features_to_process.append(
+                NaturalEarthFeature('physical', 'minor_islands', scale=resolution)
+            )
+
+        features_to_process.append(NaturalEarthFeature('physical', 'coastline', scale=resolution))
+        features_to_process.append(NaturalEarthFeature('cultural', 'urban_areas', scale=resolution))
+
+        # Process each feature
+        for feature in features_to_process:
+            for geom in feature.geometries():
+                if clip_box:
+                    geom = geom.intersection(clip_box)
+                    if geom.is_empty:
+                        continue
+
+                if isinstance(geom, Polygon):
+                    coords = list(geom.exterior.coords)
+                    lon, lat = zip(*coords)
+                    x, y = self.latlon_to_xy(lon, lat)
+                    transformed_polys.append((x, y))
+
+                elif isinstance(geom, MultiPolygon):
+                    for part in geom.geoms:
+                        if clip_box:
+                            part = part.intersection(clip_box)
+                            if part.is_empty:
+                                continue
+                        coords = list(part.exterior.coords)
+                        lon, lat = zip(*coords)
+                        x, y = self.latlon_to_xy(lon, lat)
+                        transformed_polys.append((x, y))
+
+        print(f"Total transformed land polygons extracted: {len(transformed_polys)}")
         return transformed_polys
     
     @staticmethod
