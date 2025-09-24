@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from utils.coordinate_transformer import CoordinateTransformer
+import numpy as np
 
 
 class MapPlotter:
@@ -74,11 +75,14 @@ class MapPlotter:
         plt.close(fig)
 
 
-    def plot_arctic_field(self, lat, lon, values, title="Arctic Field", cmap="coolwarm", save_path=None, show=True):
+    def plot_arctic_field(self, lat, lon, values, title="Arctic Field", cmap="coolwarm", save_path=None, show=True, extent=None):
         fig = plt.figure(figsize=(10, 8))
         ax = plt.axes(projection=ccrs.NorthPolarStereo())
-
-        ax.set_extent([-120, -50, 65, 85], crs=ccrs.PlateCarree())
+        if extent is None:   
+            ax.set_extent([-120, -50, 65, 85], crs=ccrs.PlateCarree())
+        else:
+            print("Using custom extent:", extent)
+            ax.set_extent(extent, crs=ccrs.PlateCarree())
         ax.coastlines()
         ax.add_feature(cfeature.LAND, edgecolor='black', zorder=1)
         ax.add_feature(cfeature.OCEAN, zorder=0)
@@ -86,6 +90,65 @@ class MapPlotter:
 
         mesh = ax.pcolormesh(lon, lat, values, transform=ccrs.PlateCarree(), cmap=cmap)
         plt.colorbar(mesh, orientation='vertical', pad=0.05, aspect=30, label="Value")
+        ax.set_title(title)
+
+        if save_path:
+            plt.savefig(save_path, bbox_inches='tight', dpi=300)
+
+        if show:
+            plt.show()
+        else:
+            plt.close(fig)
+
+
+    def plot_field(self, lat, lon, values=None, title="Field Plot", cmap="coolwarm", show=True, save_path=None, extent=None):
+        """
+        Plots a scalar field or point values on a map using Cartopy.
+        Automatically selects projection based on latitude range.
+
+        Parameters:
+            lat, lon: 1D or 2D numpy arrays of coordinates (in degrees)
+            values: 1D or 2D array of scalar field (optional)
+            title: Title of the plot
+            cmap: Colormap name
+            show: Whether to display the figure
+            save_path: If set, saves the figure to this path
+            extent: Optional extent [lon_min, lon_max, lat_min, lat_max]
+        """
+        # Determine if we're plotting Arctic data
+        is_arctic = np.mean(lat) > 60
+
+        # Choose projection
+        crs_proj = ccrs.NorthPolarStereo() if is_arctic else ccrs.PlateCarree()
+        crs_data = ccrs.PlateCarree()
+
+        fig = plt.figure(figsize=(10, 8))
+        ax = plt.axes(projection=crs_proj)
+
+        # Set extent
+        if extent is None:
+            if is_arctic:
+                extent = [-120, -50, 65, 85]
+            else:
+                margin = 1.0
+                lon_min, lon_max = np.min(lon), np.max(lon)
+                lat_min, lat_max = np.min(lat), np.max(lat)
+                extent = [lon_min - margin, lon_max + margin, lat_min - margin, lat_max + margin]
+        ax.set_extent(extent, crs=crs_data)
+
+        # Add features
+        ax.coastlines(resolution='10m')
+        ax.add_feature(cfeature.LAND.with_scale('10m'), edgecolor='black', zorder=1)
+        ax.add_feature(cfeature.OCEAN.with_scale('10m'), zorder=0)
+        ax.gridlines(draw_labels=True)
+
+        # Plot data
+        if values is not None:
+            mesh = ax.pcolormesh(lon, lat, values, transform=crs_data, cmap=cmap)
+            plt.colorbar(mesh, orientation='vertical', pad=0.05, aspect=30, label="Value")
+        else:
+            ax.scatter(lon, lat, s=5, c='red', transform=crs_data)
+
         ax.set_title(title)
 
         if save_path:
