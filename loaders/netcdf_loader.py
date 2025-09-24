@@ -18,6 +18,36 @@ class NetCDFLoader:
         self.ds = xr.open_dataset(file_path)
         self.crop_box = crop_box
 
+    def get_file_info(self):
+        """Returns basic information about the NetCDF file, including time, name, source, and dimensions."""
+        try:
+            # Try to get the first valid_time value (if exists)
+            if "valid_time" in self.ds.variables:
+                time_var = self.ds["valid_time"]
+                time_value = time_var.values[0].item() if time_var.size > 0 else "Unknown"
+            else:
+                time_value = "Unknown"
+        except Exception:
+            time_value = "Unknown"
+
+        info = {
+            "file_path": self.file_path,
+            "source": self.ds.attrs.get("source", "Unknown"),
+            "time": time_value,
+            "dimensions": dict(self.ds.dims)  # Convert to regular dict for readability
+        }
+        return info
+
+    def get_header(self):
+        """Returns a header dictionary with file path and source."""
+        return {
+            "file_path": self.file_path,
+            "source": self.ds.attrs.get("source", "Unknown")
+        }
+    def get_file_attributes(self):
+        """Returns all attributes of the NetCDF file."""
+        return self.ds.attrs
+    
     def get_variable_names(self):
         """
         Returns a list of all variable names.
@@ -94,17 +124,28 @@ class NetCDFLoader:
             #get lat/lon names
             lat_name, lon_name = self.get_lat_lon_names()
 
-            lat_vals = self.ds[lat_name].values
-            lon_vals = self.ds[lon_name].values
+            lat_vals = self.ds[lat_name]
+            lon_vals = self.ds[lon_name]
 
-            lat_slice = slice(lat_max, lat_min) if lat_vals[0] > lat_vals[-1] else slice(lat_min, lat_max)
-            lon_slice = slice(lon_min, lon_max) if lon_vals[0] < lon_vals[-1] else slice(lon_max, lon_min)
+        if lat_vals.ndim == 2 or lon_vals.ndim == 2:
+            # Curvilinear grid – use .where()
+            var = var.where(
+                (lat_vals >= lat_min) & (lat_vals <= lat_max) &
+                (lon_vals >= lon_min) & (lon_vals <= lon_max),
+                drop=True
+            )
+        else:
+            # Regular grid – use .sel() with safe slicing
+            lat_arr = lat_vals.values
+            lon_arr = lon_vals.values
+
+            lat_slice = slice(lat_min, lat_max) if lat_arr[0] < lat_arr[-1] else slice(lat_max, lat_min)
+            lon_slice = slice(lon_min, lon_max) if lon_arr[0] < lon_arr[-1] else slice(lon_max, lon_min)
 
             var = var.sel({lat_name: lat_slice, lon_name: lon_slice})
 
         return var
     
-
     def get_grid_data(self, variable_name: str, time_index: int = 0, crop_box: tuple = None):
         """
         Returns 2D grids of (value_grid, lat_grid, lon_grid).
